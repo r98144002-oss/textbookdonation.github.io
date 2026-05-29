@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>二手教科書捐贈系統</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen text-slate-800">
+
+    <div id="app" class="max-w-4xl mx-auto p-4 md:p-8">
+        <header class="flex justify-between items-center mb-8 bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+            <h1 class="text-2xl font-bold text-slate-700">二手教科書捐贈系統</h1>
+            <div class="flex items-center gap-4">
+                <span id="counter" class="bg-blue-100 text-blue-700 px-4 py-2 rounded-full font-semibold">共 0 冊</span>
+                <button id="toggleView" class="text-slate-500 hover:text-slate-800 text-sm font-medium underline">切換管理端</button>
+            </div>
+        </header>
+
+        <div id="main-content"></div>
+    </div>
+
+    <div id="successModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+        <div class="bg-white p-8 rounded-2xl max-w-sm w-full text-center shadow-2xl">
+            <div class="w-16 h-16 bg-green-100 text-green-500 rounded-full flex items-center justify-center mx-auto mb-4">
+                <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+            </div>
+            <h2 class="text-xl font-bold mb-4">捐贈成功！</h2>
+            <p class="text-slate-600 mb-6">您已成功送出二手書書單，請移駕至圖書館櫃檯辦理捐贈，謝謝您的愛心！(不符合者恕無法收取)</p>
+            <button onclick="closeModal()" class="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700">確認</button>
+        </div>
+    </div>
+
+    <script>
+        let books = [];
+        let view = 'reader';
+        let isAdminAuthenticated = false;
+
+        const getStoredSubmissions = () => JSON.parse(localStorage.getItem('donations') || '[]');
+
+        function render() {
+            const container = document.getElementById('main-content');
+            const toggleBtn = document.getElementById('toggleView');
+            const counter = document.getElementById('counter');
+
+            // 調整計數邏輯：Math.max(0, length - 1) 讓初始表單不計入總數
+            counter.innerText = `共 ${Math.max(0, books.length - 1)} 冊`;
+
+            if (view === 'reader') {
+                toggleBtn.innerText = "切換管理端";
+                renderReader(container);
+            } else {
+                toggleBtn.innerText = "切換讀者端";
+                renderAdmin(container);
+            }
+        }
+
+        function renderReader(container) {
+            let html = `
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-blue-100 mb-8 space-y-3 relative overflow-hidden">
+                    <div class="absolute top-0 right-0 p-4 opacity-10">
+                        <svg class="w-24 h-24 text-pink-500" fill="currentColor" viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+                    </div>
+                    <h2 class="text-center text-xl md:text-2xl font-bold text-blue-600 mb-4">📖 二手教科書募集活動，讓愛流傳～ ❤️</h2>
+                    <p class="text-rose-500 font-semibold leading-relaxed">⚖️ 防止非法影印，尊重智慧財產權，請捐贈正版「上課用教科書」，不收其他不相關圖書。</p>
+                    <p class="text-emerald-600 leading-relaxed font-medium">📍 請填寫捐書資訊，連同書本送到進德校區圖書館/師大校區圖書館。開館時間皆可捐贈！(所有欄位都要填寫)</p>
+                    <p class="text-amber-600 leading-relaxed font-medium">✅ 無明顯污漬、嚴重破損、缺頁。</p>
+                    <p class="text-purple-600 font-bold text-lg leading-relaxed">🎁 捐贈兩冊以上可兌換精美小禮物喔！快來參加~ (未達兩冊也歡迎捐贈)</p>
+                </div>
+                <div class="space-y-6">
+            `;
+            
+            books.forEach((book, index) => {
+                html += `
+                    <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200 relative">
+                        <div class="flex justify-between mb-4">
+                            <h3 class="font-bold text-lg text-blue-600">書籍 #${index + 1}</h3>
+                            ${index > 0 ? `<button onclick="removeBook(${index})" class="text-red-500 hover:text-red-700 text-sm">刪除</button>` : ''}
+                        </div>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <input type="text" placeholder="書名*" value="${book.title}" onchange="updateBook(${index}, 'title', this.value)" class="p-2 border rounded-md" required>
+                            <input type="text" placeholder="ISBN (例如: 9789861234567)*" value="${book.isbn}" onchange="updateBook(${index}, 'isbn', this.value)" class="p-2 border rounded-md" required>
+                            <input type="text" placeholder="出版年*" value="${book.year}" onchange="updateBook(${index}, 'year', this.value)" class="p-2 border rounded-md" required>
+                            <input type="text" placeholder="修課/開課系級*" value="${book.dept}" onchange="updateBook(${index}, 'dept', this.value)" class="p-2 border rounded-md" required>
+                            <input type="text" placeholder="課程名稱*" value="${book.course}" onchange="updateBook(${index}, 'course', this.value)" class="p-2 border rounded-md" required>
+                            <input type="text" placeholder="授課教師*" value="${book.teacher}" onchange="updateBook(${index}, 'teacher', this.value)" class="p-2 border rounded-md" required>
+                        </div>
+                    </div>
+                `;
+            });
+
+            html += `<button onclick="addBook()" class="w-full py-3 border-2 border-dashed border-slate-300 text-slate-500 rounded-xl hover:bg-slate-50 transition-colors">+ 新增二手教科書</button>`;
+
+            if (books.length > 0) {
+                html += `
+                    <div class="bg-slate-200 p-6 rounded-xl mt-8">
+                        <h3 class="font-bold mb-4">捐書人資訊</h3>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <input type="text" id="donorDept" placeholder="捐書人系級/單位*" class="p-2 border rounded-md" required>
+                            <input type="text" id="donorId" placeholder="學號/員工編號*" class="p-2 border rounded-md" required>
+                        </div>
+                        <button onclick="submitDonation()" class="w-full mt-6 bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700 transition-all shadow-lg">送出所有資料</button>
+                    </div>
+                `;
+            }
+
+            container.innerHTML = html + `</div>`;
+        }
+
+        function renderAdmin(container) {
+            if (!isAdminAuthenticated) {
+                container.innerHTML = `
+                    <div class="bg-white p-8 rounded-xl shadow-sm text-center">
+                        <h2 class="text-xl font-bold mb-4">管理員登入</h2>
+                        <input type="password" id="adminPass" placeholder="請輸入密碼" class="p-2 border rounded-md w-full max-w-xs mb-4">
+                        <button onclick="login()" class="block mx-auto bg-slate-800 text-white px-6 py-2 rounded-lg">驗證進入</button>
+                    </div>
+                `;
+            } else {
+                const submissions = getStoredSubmissions();
+                let tableRows = submissions.map((sub, idx) => `
+                    <tr class="border-b">
+                        <td class="p-3">${idx + 1}</td>
+                        <td class="p-3">${sub.donorId}</td>
+                        <td class="p-3">${sub.donorDept}</td>
+                        <td class="p-3">${sub.books.length} 冊</td>
+                        <td class="p-3"><button onclick="viewDetails(${idx})" class="text-blue-500 hover:underline">查看詳情</button></td>
+                    </tr>
+                `).join('');
+
+                container.innerHTML = `
+                    <div class="bg-white p-6 rounded-xl shadow-sm">
+                        <div class="flex justify-between mb-4">
+                            <h2 class="text-xl font-bold">所有捐贈列表</h2>
+                            <button onclick="downloadCSV()" class="bg-green-600 text-white px-4 py-2 rounded-lg text-sm">下載 CSV</button>
+                        </div>
+                        <table class="w-full text-left">
+                            <thead class="bg-slate-50"><tr><th class="p-3">編號</th><th class="p-3">學號/員工編號</th><th class="p-3">系級單位</th><th class="p-3">冊數</th><th class="p-3">操作</th></tr></thead>
+                            <tbody>${tableRows}</tbody>
+                        </table>
+                    </div>
+                `;
+            }
+        }
+
+        function addBook() {
+            books.push({title: '', isbn: '', year: '', dept: '', course: '', teacher: ''});
+            render();
+        }
+
+        function removeBook(index) {
+            books.splice(index, 1);
+            render();
+        }
+
+        function updateBook(index, field, value) {
+            books[index][field] = value;
+        }
+
+        function login() {
+            const pass = document.getElementById('adminPass').value;
+            if (pass === '@LibText') { 
+                isAdminAuthenticated = true;
+                render();
+            } else {
+                alert('密碼錯誤');
+            }
+        }
+
+        function submitDonation() {
+            const donorDept = document.getElementById('donorDept').value;
+            const donorId = document.getElementById('donorId').value;
+            if (!donorDept || !donorId || books.some(b => !b.title || !b.isbn || !b.year || !b.dept || !b.course || !b.teacher)) {
+                alert('請確實填寫所有必填欄位');
+                return;
+            }
+            const current = getStoredSubmissions();
+            current.push({ donorDept, donorId, books, timestamp: new Date().toISOString() });
+            localStorage.setItem('donations', JSON.stringify(current));
+            books = [{title: '', isbn: '', year: '', dept: '', course: '', teacher: ''}];
+            document.getElementById('successModal').classList.remove('hidden');
+            render();
+        }
+
+        function closeModal() {
+            document.getElementById('successModal').classList.add('hidden');
+        }
+
+        function viewDetails(index) {
+            const submissions = getStoredSubmissions();
+            const sub = submissions[index];
+            let detailsHtml = `
+                <div id="detailsModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+                    <div class="bg-white p-6 rounded-xl w-full max-w-4xl max-h-[80vh] overflow-y-auto shadow-2xl">
+                        <h2 class="text-xl font-bold mb-4">捐贈詳情 - ${sub.donorId} (${sub.donorDept})</h2>
+                        <table class="w-full text-left text-sm"><thead><tr class="border-b"><th class="p-2">書名</th><th class="p-2">ISBN</th><th class="p-2">出版年</th><th class="p-2">系級</th><th class="p-2">課程名稱</th><th class="p-2">授課教師</th></tr></thead>
+                            <tbody>${sub.books.map(b => `<tr class="border-b"><td class="p-2">${b.title}</td><td class="p-2">${b.isbn}</td><td class="p-2">${b.year}</td><td class="p-2">${b.dept}</td><td class="p-2">${b.course}</td><td class="p-2">${b.teacher}</td></tr>`).join('')}</tbody>
+                        </table>
+                        <button onclick="closeDetailsModal()" class="mt-6 w-full bg-slate-600 text-white py-2 rounded-lg hover:bg-slate-700">關閉</button>
+                    </div>
+                </div>
+            `;
+            document.body.insertAdjacentHTML('beforeend', detailsHtml);
+        }
+
+        function closeDetailsModal() { document.getElementById('detailsModal')?.remove(); }
+
+        function downloadCSV() {
+            const data = getStoredSubmissions();
+            let csv = "編號,學號/員工編號,捐書人系級/單位,書名,ISBN,出版年,修課/開課系級,課程名稱,授課教師\n";
+            data.forEach((sub, sIdx) => { sub.books.forEach(b => { csv += `${sIdx + 1},${sub.donorId},${sub.donorDept},${b.title},${b.isbn},${b.year},${b.dept},${b.course},${b.teacher}\n`; }); });
+            const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+            const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'donations.csv'; a.click();
+        }
+
+        document.getElementById('toggleView').addEventListener('click', () => {
+            if (view === 'admin') isAdminAuthenticated = false;
+            view = view === 'reader' ? 'admin' : 'reader';
+            render();
+        });
+
+        // 頁面載入後自動新增一筆，讓讀者能直接填寫
+        addBook();
+    </script>
+</body>
+</html>
