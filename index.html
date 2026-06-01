@@ -36,6 +36,23 @@
     </div>
 
     <script>
+        // ==========================================
+        // ✨ 已成功自動填入您的 Google 表單 URL ✨
+        // ==========================================
+        const formUrl = 'https://docs.google.com/forms/d/1JDsiLxzPh37qPmZS4hbwjBds_Vo8b5mxlz_791_jhb0/formResponse';
+
+        // 完美對接您找到的 8 個 Entry ID
+        const fieldMapping = {
+            title: 'entry.65897062',       // 書名
+            isbn: 'entry.1549486013',      // ISBN
+            year: 'entry.703382684',       // 出版年
+            dept: 'entry.228139552',       // 修課/開課系級
+            course: 'entry.762022284',     // 課程名稱
+            teacher: 'entry.1432088272',   // 授課教師
+            donorDept: 'entry.472102703',  // 捐書人系級/單位
+            donorId: 'entry.203825214'     // 學號/員工編號
+        };
+
         let books = [];
         let view = 'reader';
         let isAdminAuthenticated = false;
@@ -47,7 +64,6 @@
             const toggleBtn = document.getElementById('toggleView');
             const counter = document.getElementById('counter');
 
-            // 調整計數邏輯：Math.max(0, length - 1) 讓初始表單不計入總數
             counter.innerText = `共 ${Math.max(0, books.length - 1)} 冊`;
 
             if (view === 'reader') {
@@ -103,7 +119,7 @@
                             <input type="text" id="donorDept" placeholder="捐書人系級/單位*" class="p-2 border rounded-md" required>
                             <input type="text" id="donorId" placeholder="學號/員工編號*" class="p-2 border rounded-md" required>
                         </div>
-                        <button onclick="submitDonation()" class="w-full mt-6 bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700 transition-all shadow-lg">送出所有資料</button>
+                        <button id="submitBtn" onclick="submitDonation()" class="w-full mt-6 bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700 transition-all shadow-lg">送出所有資料</button>
                     </div>
                 `;
             }
@@ -135,7 +151,7 @@
                 container.innerHTML = `
                     <div class="bg-white p-6 rounded-xl shadow-sm">
                         <div class="flex justify-between mb-4">
-                            <h2 class="text-xl font-bold">所有捐贈列表</h2>
+                            <h2 class="text-xl font-bold">所有本地捐贈列表</h2>
                             <button onclick="downloadCSV()" class="bg-green-600 text-white px-4 py-2 rounded-lg text-sm">下載 CSV</button>
                         </div>
                         <table class="w-full text-left">
@@ -152,43 +168,70 @@
             render();
         }
 
-        function removeBook(index) {
-            books.splice(index, 1);
-            render();
-        }
-
-        function updateBook(index, field, value) {
-            books[index][field] = value;
-        }
-
+        function removeBook(index) { books.splice(index, 1); render(); }
+        function updateBook(index, field, value) { books[index][field] = value; }
+        
         function login() {
             const pass = document.getElementById('adminPass').value;
-            if (pass === '@LibText') { 
-                isAdminAuthenticated = true;
-                render();
-            } else {
-                alert('密碼錯誤');
-            }
+            if (pass === '@LibText') { isAdminAuthenticated = true; render(); } else { alert('密碼錯誤'); }
         }
 
+        // 核心連線發送邏輯
         function submitDonation() {
-            const donorDept = document.getElementById('donorDept').value;
-            const donorId = document.getElementById('donorId').value;
-            if (!donorDept || !donorId || books.some(b => !b.title || !b.isbn || !b.year || !b.dept || !b.course || !b.teacher)) {
+            const donorDept = document.getElementById('donorDept').value.trim();
+            const donorId = document.getElementById('donorId').value.trim();
+            
+            if (!donorDept || !donorId || books.some(b => !b.title.trim() || !b.isbn.trim() || !b.year.trim() || !b.dept.trim() || !b.course.trim() || !b.teacher.trim())) {
                 alert('請確實填寫所有必填欄位');
                 return;
             }
-            const current = getStoredSubmissions();
-            current.push({ donorDept, donorId, books, timestamp: new Date().toISOString() });
-            localStorage.setItem('donations', JSON.stringify(current));
-            books = [{title: '', isbn: '', year: '', dept: '', course: '', teacher: ''}];
-            document.getElementById('successModal').classList.remove('hidden');
-            render();
+
+            const submitBtn = document.getElementById('submitBtn');
+            submitBtn.disabled = true;
+            submitBtn.innerText = '正在同步雲端，請稍候...';
+
+            // 將多本書拆成多個獨立請求，發送至 Google Form 後台
+            const fetchPromises = books.map(book => {
+                const formData = new URLSearchParams();
+                formData.append(fieldMapping.donorDept, donorDept);
+                formData.append(fieldMapping.donorId, donorId);
+                formData.append(fieldMapping.title, book.title.trim());
+                formData.append(fieldMapping.isbn, book.isbn.trim());
+                formData.append(fieldMapping.year, book.year.trim());
+                formData.append(fieldMapping.dept, book.dept.trim());
+                formData.append(fieldMapping.course, book.course.trim());
+                formData.append(fieldMapping.teacher, book.teacher.trim());
+
+                return fetch(formUrl, {
+                    method: 'POST',
+                    mode: 'no-cors',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: formData.toString()
+                });
+            });
+
+            // 全部發送成功後執行本機存檔與彈窗
+            Promise.all(fetchPromises)
+                .then(() => {
+                    const current = getStoredSubmissions();
+                    current.push({ donorDept, donorId, books, timestamp: new Date().toISOString() });
+                    localStorage.setItem('donations', JSON.stringify(current));
+
+                    books = [];
+                    document.getElementById('successModal').classList.remove('hidden');
+                    addBook();
+                })
+                .catch(error => {
+                    console.error('傳送至 Google 表單發生錯誤:', error);
+                    alert('連線至雲端發生異常，請重試或聯絡圖書館人員。');
+                })
+                .finally(() => {
+                    submitBtn.disabled = false;
+                    submitBtn.innerText = '送出所有資料';
+                });
         }
 
-        function closeModal() {
-            document.getElementById('successModal').classList.add('hidden');
-        }
+        function closeModal() { document.getElementById('successModal').classList.add('hidden'); }
 
         function viewDetails(index) {
             const submissions = getStoredSubmissions();
@@ -223,7 +266,6 @@
             render();
         });
 
-        // 頁面載入後自動新增一筆，讓讀者能直接填寫
         addBook();
     </script>
 </body>
